@@ -1,0 +1,66 @@
+name: Make tech short
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "SQL / Python topic (leave empty = AI picks a new one)"
+        required: false
+        default: ""
+        type: string
+      youtube:
+        description: "Upload to YouTube (Learn & Implement channel)?"
+        required: true
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+      yt_privacy:
+        description: "YouTube privacy"
+        required: true
+        default: "public"
+        type: choice
+        options: ["public", "unlisted", "private"]
+  # Timing is done by cron-job.org (one POST per day to this workflow).
+
+permissions:
+  contents: write   # publishes the video as a GitHub Release (tag tech-<run id>), also used to avoid repeat topics
+
+jobs:
+  make-tech-short:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg and fonts
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ffmpeg fonts-dejavu-core fontconfig
+
+      - name: Install Python packages
+        run: pip install edge-tts pygments requests pillow pandas
+
+      - name: Make the short
+        env:
+          NVIDIA_KEY: ${{ secrets.NVIDIA_KEY }}
+          CF_TOKEN: ${{ secrets.CF_TOKEN }}
+          TOPIC: ${{ inputs.topic }}
+          YT_UPLOAD: ${{ inputs.youtube || 'no' }}
+          YT_PRIVACY: ${{ inputs.yt_privacy || 'public' }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          TECH_YT_REFRESH_TOKEN: ${{ secrets.TECH_YT_REFRESH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: python tech_short.py
+
+      - name: Save the video as a GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "tech-${{ github.run_id }}" short_out/sql_short.mp4 \
+            --title "$(cat short_out/title.txt)" \
+            --notes-file short_out/release_notes.txt
